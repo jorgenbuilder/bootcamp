@@ -22,10 +22,7 @@ shared ({ caller = creator }) actor class MyCanister() = {
         removals : [Principal],
     ) : async () {
         assert(isAdmin(caller));
-        // https://smartcontracts.org/docs/base-libraries/Array.html#filter
-        // Discuss the syntax of this method call
         admins := Array.filter<Principal>(admins, func (admin) {
-            // Show off another way of handling an opt
             Option.isNull(Array.find<Principal>(removals, func (x) { x == admin }));
         });
     };

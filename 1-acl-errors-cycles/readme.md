@@ -1,12 +1,15 @@
-I think I want to live type my lectures.
-
 # Access Control, Error Handling, and Cycles
+
+Learning objective: by the end of this lecture you see how to implement access control, gracefully handle errors, and use the experimental cycles library.
+
+Level: intermediate
 
 ## Title Card
 
 - I'm Jorgen
 - Founder, Saga Tarot
 - Started on the Internet Computer in May 2021.
+- All code available at github link
 
 This lecture is a bit of a grab bag, so let's jump right in.
 
@@ -22,9 +25,9 @@ This lecture is a bit of a grab bag, so let's jump right in.
 - The simplest way to check that the caller is the owner is using `assert`.
 
 ```motoko
-shared ({ caller }) actor class MyCanister() = {
+shared ({ caller = creator }) actor class MyCanister() = {
 
-    stable var owner : Principal = caller;
+    stable var owner : Principal = creator;
 
     public shared ({ caller }) func mySecret () : async Text {
         assert(caller == owner);
@@ -89,9 +92,9 @@ dfx canister call access-control-basic mySecret
 import Array "mo:base/Array";
 import Option "mo:base/Option";
 
-shared ({ caller }) actor class MyCanister() = {
+shared ({ caller = creator }) actor class MyCanister() = {
 
-    stable var admins : [Principal] = [caller];
+    stable var admins : [Principal] = [creator];
 
     private func isAdmin (
         principal : Principal,
@@ -107,6 +110,7 @@ shared ({ caller }) actor class MyCanister() = {
     ) : async () {
         assert(isAdmin(caller));
         admins := Array.append(admins, Array.filter<Principal>(newAdmins, func (x) {
+            // Briefly: we filter out admins which are already in the list
             Option.isNull(Array.find<Principal>(admins, func (y) { x == y }));
         }));
     };
@@ -122,11 +126,9 @@ shared ({ caller }) actor class MyCanister() = {
 - Show it off
 
 ```zsh
-dfx identity use main
-dfx deploy --no-wallet error-handling
 principal=$(dfx identity use alternate && dfx identity get-principal)
 dfx identity use main
-dfx canister call access-control-multi mySecret
+dfx deploy --no-wallet access-control-multi
 dfx canister call access-control-multi addAdmins "(vec { principal \"$principal\"; })";
 dfx identity use alternate
 dfx canister call access-control-multi mySecret
@@ -140,11 +142,19 @@ dfx canister call access-control-multi mySecret
     - Perhaps certain individuals or groups of individuals should be able to access certain things, but not others.
     - Perhaps an individual should only be able to access their own data.
 - Challenge! Create a simple permission system with multiple roles or individuals that have unique permissions profiles.
+    - Principals with minter role can call a mint method (which simply returns #ok())
+    - Principals with configurator role can call a configure method (which simply returns #ok())
+
+### Access Control Wrap-Up
+
+- Get the source code from the github link
+- Try adding access control to one of your contracts
 
 ## Error Handling
 
 - Reading materials: https://smartcontracts.org/docs/language-guide/errors.html
 - With the admin system, we used `assert` to trap the contract based on an expression.
+- Trapping a contract: when a contract traps, the request is thrown out and none of the state changes committed (exception to this (brief): async / async)
 - Assert is quick to write, but it provides incredibly useless error messages.
 - Motoko provides two modules which are much better for error handling: `Result` and `Error`.
 - The Option value primitive is also good for certain error cases.
@@ -175,6 +185,7 @@ foo() // if null, then how do I know what went wrong???
 - `Error` and `Result` both allow us to provide more context for a given failure.
 - However, the Motoko docs encourage us to prefer `Result`. Whereas “exceptions should only be used to signal unexpected error states.”
 - Using `Result` makes your API safer by forcing consumers to unpack and handle all eventual cases.
+- Using a `Result` uses the variant type to allow us to define a data type for a successful result (`#ok()`), and a data type for an error result (`#err()`).
 - Let's look at an example...
 
 ```
@@ -184,8 +195,8 @@ import Result "mo:base/Result";
 
 shared ({ caller = creator }) actor class MyCanister() = {
 
-    let owner : Principal = creator;
-    let folks : [Text] = ["Alice", "Bob", "Charlie"];
+    stable var owner : Principal = creator;
+    stable var folks : [Text] = ["Alice", "Bob", "Charlie"];
 
     // By using a variant type, we can even be explicit about certain error cases.
     type Errors = {
@@ -218,6 +229,11 @@ dfx identity use alternate
 dfx canister call error-handling renameFolk '("Randall", "Randy")'
 ```
 
+### Error Handling Wrap Up
+
+- Stick to `Result` as much as possible, and steer clear of `Error` for now.
+- Pull down the github source code and try it out for yourself
+
 ## Cycles
 
 - We use cycles to pay for computation on the internet computer.
@@ -225,6 +241,8 @@ dfx canister call error-handling renameFolk '("Randall", "Randy")'
 - As an example, let's create a paid API for Grandma's lasagne recipe.
 
 ```motoko
+// This is Grandma's canister.
+
 import Cycles "mo:base/ExperimentalCycles";
 import Result "mo:base/Result";
 
@@ -249,6 +267,8 @@ shared ({ caller = creator }) actor class MyCanister() = {
 ```
 
 ```motoko
+// This is the consumer canister
+
 import Cycles "mo:base/ExperimentalCycles";
 import Debug "mo:base/Debug";
 import Nat "mo:base/Nat";
